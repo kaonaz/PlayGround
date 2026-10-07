@@ -1,0 +1,17 @@
+[Unit]
+Description=BTC 5m Up/Down Nowcast G1 recorder (no trading)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# GANTI /opt/nowcast dengan path folder extrack ZIP di VPS Anda
+WorkingDirectory=/opt/nowcast
+EnvironmentFile=/opt/nowcast/.env
+ExecStart=/opt/nowcast/venv/bin/python -m nowcast.ingest.polybolt_ws --duration-sec 172800 --out /opt/nowcast/data/raw
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

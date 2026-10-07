@@ -1,0 +1,78 @@
+# BTC 5m Up/Down Nowcast Engine — G1 config (v2.3)
+# HYPOTHESES MUST BE WRITTEN BEFORE RECORDING. Do not edit after a run starts;
+# copy this file to data/reports/<run_id>/config.yaml instead.
+
+project: btc-updown-5m-nowcast
+spec_version: "2.3"
+gate_active: G1
+# G2-G5 are DESIGNED but GATED. Code paths for them must refuse to run until G1 passes.
+trading_enabled: false
+
+market:
+  slug_prefix: btc-updown-5m-
+  symbol: btcusd
+  twap_window_seconds: 60
+  # S_open / S_end are Chainlink TWAP values, NOT spot.
+  # Tie rule is UNCONFIRMED — must be read from each market's Gamma description.
+  tie_default: Up
+  tie_confirmed: false
+
+polybolt:
+  url: wss://ws-live-v2.polymarket.com/ws
+  channels:
+    - channel: price.crypto.twap
+      filter: { symbol: btcusd, window_seconds: 60 }
+      role: label   # official TWAP value, stored verbatim, never reconstructed
+    - channel: price.crypto
+      filter: { symbol: btcusd }
+      role: feature # spot as feature only, record `source` every message
+  limits:
+    max_subscriptions: 64
+    sub_frames_per_sec: 20
+    max_auth_frames: 8
+    max_frame_kb: 64
+    server_ping_sec: 25
+  snapshot_minutes: 2
+
+gamma:
+  base_url: https://gamma-api.polymarket.com
+  # Cutoff epoch/slug of the 60s-TWAP regime is UNCONFIRMED — use startDate/endDate per market.
+  fields_required:
+    - description
+    - startDate
+    - endDate
+    - outcomes
+    - outcomePrices
+    - resolutionSource
+
+# H1 hypotheses (G1) — decided BEFORE recording
+hypotheses:
+  H1a: "One of the three boundary rules (last tick strictly-before bound | last tick on-or-before bound | first tick on-or-after bound) reproduces the official Gamma outcome on every sampled window. The three rules are scored separately."
+  H1b: "TWAP update cadence is measured (sub-second / threshold / heartbeat), never assumed."
+  H1c: "Computed outcome == Gamma outcome on all windows (>=100 windows after the 60s cutover); every mismatch is explained individually."
+  H1d: "Rule text is consistent across sampled markets (identical resolution_rule_hash)."
+
+g1:
+  record_first_hours: 1
+  record_extended_hours: 48   # ~576 windows
+  min_windows_after_60s_cutover: 100
+  boundary_rules: [before, on_or_before, on_or_after]
+  verdict:
+    pass: "One boundary rule matches on ALL windows and every exception is explained."
+    investigate: "Any unexplained mismatch -> STOP and investigate."
+    fail: "No rule matches and no cause found -> HALTED."
+
+# Fee model (G3-gated, stored here with effective date, unit-tested)
+fees:
+  effective_date: "2026-10-06"
+  taker_rate_crypto: 0.07
+  maker_fee: 0.0
+  maker_rebate: 0.20
+  rounding_decimals: 5
+  minimum_fee_usdc: 0.00001
+  formula: "fee_per_share = 0.07 * p * (1 - p), rounded to 5 decimals, min 0.00001 (0 at p in {0,1})"
+
+paths:
+  raw_dir: data/raw
+  gamma_dir: data/gamma
+  reports_dir: data/reports
